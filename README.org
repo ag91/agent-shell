@@ -19,7 +19,7 @@ Thank you!
 
 =agent-shell= brings your favorite AI agents to [[https://www.gnu.org/software/emacs/][Emacs]], keeping you at home: familiar buffers and bindings, no terminal emulation. All powered by ACP, the [[https://agentclientprotocol.com][Agent Client Protocol]].
 
-Works with 24 agents today, and any other that speaks ACP:
+Works with 25 agents today, and any other that speaks ACP:
 
 - [[https://antigravity.google/docs/ide/extensions][Antigravity]] (Google)
 - [[https://docs.augmentcode.com/cli/overview][Auggie]]
@@ -29,6 +29,7 @@ Works with 24 agents today, and any other that speaks ACP:
 - [[https://github.com/agentclientprotocol/codex-acp][Codex]] (OpenAI)
 - [[https://cursor.com/docs/cli][Cursor]]
 - [[https://github.com/deepseek-ai/deepseek-harness][DeepSeek Harness]]
+- [[https://devin.ai][Devin CLI]]
 - [[https://factory.ai][Factory Droid]]
 - [[https://github.com/google-gemini/gemini-cli][Gemini CLI]] (Google)
 - [[https://docs.github.com/en/copilot/reference/copilot-cli-reference/acp-server][GitHub Copilot]]
@@ -294,6 +295,24 @@ uv tool install mistral-vibe
 #+end_src
 
 See https://github.com/mistralai/mistral-vibe for details.
+
+*** Devin
+
+Install Devin CLI and sign in with =devin auth login=.  The CLI must support
+=devin acp= (check with =devin acp --help=).  No separate ACP adapter is needed.
+
+Start a local session with =M-x agent-shell-devin-start-agent=.
+The CLI's existing login is used automatically.
+
+To use Devin Cloud instead:
+
+#+begin_src emacs-lisp
+(setq agent-shell-devin-acp-command '("devin" "acp" "--cloud"))
+#+end_src
+
+For a local model override, append =--model= and the model name to
+=agent-shell-devin-acp-command=, or set =DEVIN_MODEL= in
+=agent-shell-devin-environment=.  See https://devin.ai for details.
 
 *** Factory Droid
 
@@ -894,6 +913,7 @@ Start a specific agent shell session directly:
 - =M-x agent-shell-xai-start-grok= - Start a Grok Build (xAI) agent session
 - =M-x agent-shell-cursor-start-agent= - Start a Cursor agent session
 - =M-x agent-shell-deepseek-start-agent= - Start a DeepSeek Harness agent session
+- =M-x agent-shell-devin-start-agent= - Start a Devin agent session
 - =M-x agent-shell-junie-start-agent= - Start a Junie agent session
 - =M-x agent-shell-kiro-start-agent= - Start a Kiro CLI agent session
 - =M-x agent-shell-qoder-start-agent= - Start a Qoder CLI agent session

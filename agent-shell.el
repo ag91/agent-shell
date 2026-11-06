@@ -1324,6 +1324,8 @@ OUTGOING-REQUEST-DECORATOR (passed through to `acp-make-client')."
         (cons :supports-steering nil)
         (cons :resume-session-id nil)
         (cons :fork-session-id nil)
+        (cons :fork-title-pending nil)
+        (cons :fork-title nil)
         (cons :pending-restore nil)
         (cons :prompt-capabilities nil)
         (cons :event-subscriptions nil)
@@ -1713,6 +1715,9 @@ Works from both shell and viewport buffers."
 Creates a new shell that forks the current session's conversation,
 leaving the original shell intact.  The new shell shares conversation
 history with the original but diverges from this point forward.
+The first new prompt becomes the fork's title in Agent Shell, taking
+precedence over agent-supplied titles without renaming the saved session.
+Its buffer name also includes a short version of that prompt.
 
 Works from both shell and viewport buffers."
   (declare (modes agent-shell-mode
@@ -8573,6 +8578,7 @@ listing sessions to pick one to load."
                  (let ((new-session-id (map-elt acp-fork-response 'sessionId)))
                    (unless new-session-id
                      (error "Fork response missing sessionId"))
+                   (map-put! (agent-shell--state) :fork-title-pending t)
                    (agent-shell--emit-event
                     :event 'session-selected
                     :data (list (cons :session-id new-session-id)))
@@ -9245,13 +9251,53 @@ Examples:
 
 (defun agent-shell--set-session-title (title)
   "Set the current session's title to TITLE and emit `session-title-changed'.
-Does nothing if TITLE is empty or matches the current value."
+Does nothing if TITLE is empty or matches the current value.
+Once a fork has a first-prompt title, keep that instead of agent titles."
+  (setq title (or (map-elt agent-shell--state :fork-title) title))
   (when (and (stringp title)
              (not (string-empty-p title))
              (not (equal (map-nested-elt agent-shell--state '(:session :title)) title)))
     (map-put! (map-elt agent-shell--state :session) :title title)
     (agent-shell--emit-event :event 'session-title-changed
                              :data (list (cons :title title)))))
+
+(defun agent-shell--rename-fork-buffer (title)
+  "Append a short version of TITLE to the current fork's buffer name.
+
+For example, \"Droid Agent @ project<2>\" with TITLE \"Try another approach\"
+becomes \"Droid Agent @ project<2> - Try another approach\".
+Keep any existing viewport associated with the renamed shell."
+  (let ((name (concat (buffer-name) " - "
+                      (truncate-string-to-width
+                       (string-trim (replace-regexp-in-string "[[:space:]]+" " " title))
+                       50 nil nil "...")))
+        (viewport (agent-shell-viewport--buffer
+                   :shell-buffer (current-buffer) :existing-only t)))
+    (setq name (generate-new-buffer-name name))
+    (while (get-buffer (concat name agent-shell-viewport--suffix))
+      (setq name (generate-new-buffer-name (concat name "<2>"))))
+    (shell-maker-set-buffer-name (current-buffer) name)
+    (when viewport
+      (let ((name (concat (buffer-name) agent-shell-viewport--suffix)))
+        (with-current-buffer viewport
+          (rename-buffer name))))))
+
+(defun agent-shell--seed-session-title (prompt)
+  "Seed the session title from PROMPT, stripping text properties.
+
+The first non-blank prompt after a fork replaces its inherited title.
+For other sessions, only seed a title when none exists."
+  (cond
+   ((and (map-elt agent-shell--state :fork-title-pending)
+         (not (string-empty-p (string-trim prompt))))
+    (map-put! agent-shell--state :fork-title
+              (string-trim (substring-no-properties prompt)))
+    (map-put! agent-shell--state :fork-title-pending nil)
+    (agent-shell--rename-fork-buffer (map-elt agent-shell--state :fork-title))
+    (agent-shell--set-session-title (map-elt agent-shell--state :fork-title)))
+   ((and (not (map-elt agent-shell--state :fork-title-pending))
+         (not (map-nested-elt agent-shell--state '(:session :title))))
+    (agent-shell--set-session-title (substring-no-properties prompt)))))
 
 (defun agent-shell--refresh-session-title (&optional _event)
   "Refresh `(:session :title)' by fetching from agent.
@@ -9261,9 +9307,10 @@ field on the matching session via `agent-shell--set-session-title'.  Agents
 that don't supply a title (e.g. Claude Code) are no-ops; the seeded
 first-prompt title is left in place.
 
-Does nothing if the agent doesn't advertise the `list' session
-capability, since the `session/list' request would otherwise fail."
-  (when-let* ((_ (map-elt agent-shell--state :supports-session-list))
+Does nothing for a fork with a first-prompt title, or if the agent
+doesn't advertise the `list' session capability."
+  (when-let* (((not (map-elt agent-shell--state :fork-title)))
+              (_ (map-elt agent-shell--state :supports-session-list))
               (client (map-elt agent-shell--state :client))
               (session-id (map-nested-elt agent-shell--state '(:session :id))))
     (acp-send-request
@@ -9331,8 +9378,7 @@ reads the buffer's prompt capabilities."
     ;; Seed the session title with the first user prompt so consumers
     ;; (e.g. agent-shell-manager) have something to display before any
     ;; agent-supplied title arrives.
-    (unless (map-nested-elt agent-shell--state '(:session :title))
-      (agent-shell--set-session-title (substring-no-properties prompt)))
+    (agent-shell--seed-session-title prompt)
 
     (agent-shell--append-transcript
      :text (format "## User (%s)\n\n%s\n\n"

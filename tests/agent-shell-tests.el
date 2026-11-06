@@ -4222,6 +4222,7 @@ so the command must not append a second time."
                     (list (cons :buffer (current-buffer))
                           (cons :client 'test-client)
                           (cons :supports-session-resume t)
+                          (cons :fork-title-pending nil)
                           (cons :pending-restore nil)))
         (cl-letf (((symbol-function 'agent-shell--state)
                    (lambda () agent-shell--state))
@@ -4251,6 +4252,7 @@ so the command must not append a second time."
              :on-session-init (lambda () (setq session-init-called t))))
           (should (equal (nreverse methods) '("session/fork" "session/resume")))
           (should session-init-called)
+          (should (map-elt agent-shell--state :fork-title-pending))
           (should-not list-and-load-called))))))
 
 (ert-deftest agent-shell--initiate-session-prefers-list-and-load-when-supported ()
